@@ -2,86 +2,110 @@ const { Client } = require("revolt.js");
 const fetch = require("node-fetch");
 const express = require("express");
 
-// --- 1. WEB SERVER (Render Keep-Alive & Browser Test) ---
+// --- 1. WEB SERVER ---
 const app = express();
-app.get("/", (req, res) => res.send("<h1>BibleBot is Live</h1>"));
+app.get("/", (req, res) => res.send("BibleBot is Online"));
 app.listen(process.env.PORT || 10000);
 
 // --- 2. CONFIGURATION ---
-const client = new Client({
-    apiURL: "https://api.stoat.chat"
-});
-
+const client = new Client({ apiURL: "https://api.stoat.chat" });
 const PREFIX = "!";
 
-client.on("ready", () => {
-    console.log(`✅ BibleBot logged in as ${client.user.username}`);
-});
+// Default settings
+let currentVersion = "web"; // World English Bible
+const SUPPORTED_VERSIONS = ["web", "kjv", "asv", "bbe", "oeb", "webbe"];
+
+client.on("ready", () => console.log(`✅ BibleBot online as ${client.user.username}`));
 
 // --- 3. MESSAGE HANDLER ---
 client.on("messageCreate", async (message) => {
-    // Ignore bots and empty messages
     if (!message.content || message.author?.bot) return;
+    const input = message.content.trim();
+    if (!input.startsWith(PREFIX)) return;
 
-    const raw = message.content.trim();
-    if (!raw.startsWith(PREFIX)) return;
+    const args = input.slice(PREFIX.length).split(/ +/);
+    const command = args.shift().toLowerCase();
 
-    // Remove prefix and prepare for check
-    const input = raw.slice(PREFIX.length).trim();
-    const lowerInput = input.toLowerCase();
-
-    // --- COMMAND: !ping ---
-    if (lowerInput === "ping") {
-        const start = Date.now();
-        const reply = await message.reply("Pinging...");
-        const ms = Date.now() - start;
-        return reply.edit({ content: `🏓 **Pong!** BibleBot is alive. (Latency: ${ms}ms)` });
+    // 🏓 PING
+    if (command === "ping") {
+        return message.reply("🏓 **Pong!** Bot is fully operational.");
     }
 
-    // --- COMMAND: !random ---
-    if (lowerInput === "random") {
-        const data = await fetchBible("https://bible-api.com/data/web/random");
+    // 📖 HELP COMMAND
+    if (command === "help") {
+        return message.reply(
+            `# 📖 BibleBot Help\n` +
+            `**Standard Commands:**\n` +
+            `> \`!random\` - Get a random verse.\n` +
+            `> \`![Reference]\` - e.g., \`!John3:16\` to get the verse.\n` +
+            `> \`![Reference]?[Version]\` - e.g., \`!John3:16?kjv\`\n\n` +
+            `**Settings:**\n` +
+            `> \`!version [name]\` - Set the default version (Current: **${currentVersion.toUpperCase()}**).\n` +
+            `> \`!versions\` - List all supported Bible versions.\n\n` +
+            `**System:**\n` +
+            `> \`!ping\` - Check bot response time.`
+        );
+    }
+
+    // 📜 VERSIONS LIST
+    if (command === "versions") {
+        return message.reply(`**Available Versions:**\n${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
+    }
+
+    // ⚙️ SET VERSION
+    if (command === "version") {
+        const newVer = args[0]?.toLowerCase();
+        if (SUPPORTED_VERSIONS.includes(newVer)) {
+            currentVersion = newVer;
+            return message.reply(`✅ Default version set to **${newVer.toUpperCase()}**.`);
+        }
+        return message.reply(`❌ Invalid version. Type \`!versions\` to see the list.`);
+    }
+
+    // 🎲 RANDOM
+    if (command === "random") {
+        const data = await fetchJSON(`https://bible-api.com/data/${currentVersion}/random`);
         if (data?.random_verse) {
             const v = data.random_verse;
-            return message.reply(`🎲 **Random Verse**\n**${v.book_name} ${v.chapter}:${v.verse}**\n${v.text}`);
+            return message.reply(`🎲 (**${currentVersion.toUpperCase()}**) **${v.book_name} ${v.chapter}:${v.verse}**\n${v.text}`);
         }
     }
 
-    // --- SMART PARSER: Detects references like !John3:16 or !Genesis 1:1 ---
-    // This regex looks for: [Book Name][Chapter]:[Verse]
-    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)/i;
-    const match = input.match(bibleRegex);
+    // 🔍 SMART REFERENCE PARSER (!John3:16 or !John3:16?kjv)
+    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(\?[a-z]+)?/i;
+    const match = command.match(bibleRegex);
 
     if (match) {
-        console.log(`[DEBUG] Detected reference: ${input}`);
-        const data = await fetchBible(`https://bible-api.com/${encodeURIComponent(input)}`);
-        
+        let reference = command;
+        let version = currentVersion;
+
+        // Check if user provided a version override (e.g. !John3:16?kjv)
+        if (command.includes("?")) {
+            const parts = command.split("?");
+            reference = parts[0];
+            const requestedVersion = parts[1].toLowerCase();
+            if (SUPPORTED_VERSIONS.includes(requestedVersion)) {
+                version = requestedVersion;
+            }
+        }
+
+        const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
         if (data && data.text) {
-            return message.reply(`📖 **${data.reference}** (${data.translation_name})\n${data.text}`);
+            return message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${data.text}`);
         } else {
-            return message.reply(`❌ I couldn't find "${input}". Double-check the spelling!`);
+            return message.reply(`❌ Reference not found or formatting error.`);
         }
     }
 });
 
-// Helper function to fetch from API
-async function fetchBible(url) {
+// Helper
+async function fetchJSON(url) {
     try {
         const res = await fetch(url);
-        if (!res.ok) return null;
         return await res.json();
     } catch (e) {
-        console.error("Fetch Error:", e);
         return null;
     }
 }
-
-// Error handling for Session issues
-client.on("error", (err) => {
-    if (err.data?.type === 'InvalidSession') {
-        console.log("Session invalid. Restarting...");
-        process.exit(1);
-    }
-});
 
 client.loginBot(process.env.BOT_TOKEN);
