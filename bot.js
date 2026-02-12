@@ -87,7 +87,7 @@ client.on("messageCreate", async (message) => {
         const data = await fetchBible("https://bible-api.com/data/web/random");
         if (data?.random_verse) {
             const v = data.random_verse;
-            return message.reply(`✝️ **Random Verse**\n ${v.text}`);
+            return message.reply(`🎲 **Random Verse**\n**${v.book_name} ${v.chapter}:${v.verse}**\n${v.text}`);
         }
     }
 
