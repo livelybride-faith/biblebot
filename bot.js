@@ -12,8 +12,28 @@ const client = new Client({ apiURL: "https://api.stoat.chat" });
 const PREFIX = "!";
 
 // Default settings
-let currentVersion = "web"; // World English Bible
-const SUPPORTED_VERSIONS = ["web", "kjv", "asv", "bbe", "oeb", "webbe"];
+let currentVersion = "kjv"; // World English Bible
+const SUPPORTED_VERSIONS = [
+    // --- English ---
+    "web",      // World English Bible (Default)
+    "kjv",      // King James Version
+    "asv",      // American Standard Version (1901)
+    "bbe",      // Bible in Basic English
+    "darby",    // Darby Bible
+    "dra",      // Douay-Rheims 1899 American Edition
+    "ylt",      // Young's Literal Translation (NT Only)
+    "oeb-us",   // Open English Bible (US Edition)
+    "oeb-cw",   // Open English Bible (Commonwealth Edition)
+    "webbe",    // World English Bible (British Edition)
+
+    // --- International ---
+    "almeida",    // Portuguese (João Ferreira de Almeida)
+    "rccv",       // Romanian (Protestant Romanian Corrected Cornilescu)
+    "bkr",        // Czech (Bible kralická)
+    "cuv",        // Chinese (Chinese Union Version)
+    "clementine", // Latin (Clementine Latin Vulgate)
+    "cherokee"    // Cherokee (Cherokee New Testament)
+];
 
 client.on("ready", () => console.log(`✅ BibleBot online as ${client.user.username}`));
 
