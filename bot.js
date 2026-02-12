@@ -62,12 +62,19 @@ client.on("messageCreate", async (message) => {
         return message.reply(`❌ Invalid version. Type \`!versions\` to see the list.`);
     }
 
-    // 🎲 RANDOM
+    // 🎲 UPDATED RANDOM COMMAND
     if (command === "random") {
-        const data = await fetchJSON(`https://bible-api.com/data/${currentVersion}/random`);
-        if (data?.random_verse) {
-            const v = data.random_verse;
-            return message.reply(`🎲 (**${currentVersion.toUpperCase()}**) **${v.book_name} ${v.chapter}:${v.verse}**\n${v.text}`);
+        const res = await fetch(`https://bible-api.com/data/${currentVersion}/random`);
+        const data = await res.json();
+
+        // This line handles both the OLD and NEW API formats
+        const v = data.random_verse ? data.random_verse : data;
+
+        // Ensure we have the data before replying
+        if (v && v.book_name) {
+            return message.reply(`✝️ (**${currentVersion.toUpperCase()}**) **${v.book_name} ${v.chapter}:${v.verse}**\n${v.text}`);
+        } else {
+            return message.reply("❌ The Bible API returned an unexpected format. Try again in a moment.");
         }
     }
 
