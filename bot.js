@@ -11,28 +11,10 @@ app.listen(process.env.PORT || 10000);
 const client = new Client({ apiURL: "https://api.stoat.chat" });
 const PREFIX = "!";
 
-// Default settings
-let currentVersion = "kjv"; // World English Bible
+let currentVersion = "kjv"; 
 const SUPPORTED_VERSIONS = [
-    // --- English ---
-    "web",      // World English Bible (Default)
-    "kjv",      // King James Version
-    "asv",      // American Standard Version (1901)
-    "bbe",      // Bible in Basic English
-    "darby",    // Darby Bible
-    "dra",      // Douay-Rheims 1899 American Edition
-    "ylt",      // Young's Literal Translation (NT Only)
-    "oeb-us",   // Open English Bible (US Edition)
-    "oeb-cw",   // Open English Bible (Commonwealth Edition)
-    "webbe",    // World English Bible (British Edition)
-
-    // --- International ---
-    "almeida",    // Portuguese (João Ferreira de Almeida)
-    "rccv",       // Romanian (Protestant Romanian Corrected Cornilescu)
-    "bkr",        // Czech (Bible kralická)
-    "cuv",        // Chinese (Chinese Union Version)
-    "clementine", // Latin (Clementine Latin Vulgate)
-    "cherokee"    // Cherokee (Cherokee New Testament)
+    "web", "kjv", "asv", "bbe", "darby", "dra", "ylt", "oeb-us", 
+    "oeb-cw", "webbe", "almeida", "rccv", "bkr", "cuv", "clementine", "cherokee"
 ];
 
 client.on("ready", () => console.log(`✅ BibleBot online as ${client.user.username}`));
@@ -57,19 +39,17 @@ client.on("messageCreate", async (message) => {
             `# 📖 BibleBot Help\n` +
             `**Standard Commands:**\n` +
             `> \`!random\` - Get a random verse.\n` +
-            `> \`![Reference]\` - e.g., \`!John3:16\` to get the verse.\n` +
+            `> \`![Reference]\` - e.g., \`!John3:16\`\n` +
             `> \`![Reference]?[Version]\` - e.g., \`!John3:16?kjv\`\n\n` +
             `**Settings:**\n` +
-            `> \`!version [name]\` - Set the default version (Current: **${currentVersion.toUpperCase()}**).\n` +
-            `> \`!versions\` - List all supported Bible versions.\n\n` +
-            `**System:**\n` +
-            `> \`!ping\` - Check bot response time.`
+            `> \`!version [name]\` - Set default (Current: **${currentVersion.toUpperCase()}**).\n` +
+            `> \`!versions\` - List all supported versions.`
         );
     }
 
     // 📜 VERSIONS LIST
     if (command === "versions") {
-        return message.reply(`**Available Versions:**\n${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
+        return message.reply(`**Available:** ${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
     }
 
     // ⚙️ SET VERSION
@@ -79,27 +59,40 @@ client.on("messageCreate", async (message) => {
             currentVersion = newVer;
             return message.reply(`✅ Default version set to **${newVer.toUpperCase()}**.`);
         }
-        return message.reply(`❌ Invalid version. Type \`!versions\` to see the list.`);
+        return message.reply(`❌ Invalid version.`);
     }
 
-    // --- COMMAND: !random ---
-    if (lowerInput === "random") {
-        const data = await fetchBible("https://bible-api.com/data/web/random");
-        if (data?.random_verse) {
+    // 🎲 UPDATED RANDOM COMMAND
+    if (command === "random") {
+        try {
+            // Using the /data/ endpoint which matches your specific JSON format
+            const res = await fetch(`https://bible-api.com/data/${currentVersion}/random`);
+            const data = await res.json();
+
+            // Handle the specific format: data.random_verse
             const v = data.random_verse;
-            return message.reply(`🎲 **Random Verse**\n**${v.book_name} ${v.chapter}:${v.verse}**\n${v.text}`);
+
+            if (v && v.text) {
+                const book = v.book || v.book_name; // Use 'book' based on your provided JSON
+                const ref = `${book} ${v.chapter}:${v.verse}`;
+                return message.reply(`✝️ (**${currentVersion.toUpperCase()}**) **${ref}**\n${v.text.trim()}`);
+            } else {
+                throw new Error("Unexpected API response format");
+            }
+        } catch (error) {
+            console.error("Random Error:", error);
+            return message.reply("❌ Failed to fetch a random verse. Try again in a moment.");
         }
     }
 
-    // 🔍 SMART REFERENCE PARSER (!John3:16 or !John3:16?kjv)
-    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(\?[a-z]+)?/i;
+    // 🔍 SMART REFERENCE PARSER
+    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)/i;
     const match = command.match(bibleRegex);
 
     if (match) {
         let reference = command;
         let version = currentVersion;
 
-        // Check if user provided a version override (e.g. !John3:16?kjv)
         if (command.includes("?")) {
             const parts = command.split("?");
             reference = parts[0];
@@ -113,7 +106,7 @@ client.on("messageCreate", async (message) => {
         if (data && data.text) {
             return message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${data.text}`);
         } else {
-            return message.reply(`❌ Reference not found or formatting error.`);
+            return message.reply(`❌ Reference not found.`);
         }
     }
 });
