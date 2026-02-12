@@ -82,25 +82,12 @@ client.on("messageCreate", async (message) => {
         return message.reply(`❌ Invalid version. Type \`!versions\` to see the list.`);
     }
 
-    // RANDOM COMMAND
-    if (command === "random") {
-        try {
-            const res = await fetch(`https://bible-api.com/v2/translations/${currentVersion}/random`);
-            const data = await res.json();
-
-            // The API usually returns an object containing a 'verses' array or a direct verse object
-            const verse = data.verses ? data.verses[0] : data;
-
-            if (verse && verse.text) {
-                // Formatting the reference: Book Chapter:Verse
-                const ref = `${verse.book_name} ${verse.chapter}:${verse.verse}`;
-                return message.reply(`✝️ (**${currentVersion.toUpperCase()}**) **${ref}**\n${verse.text.trim()}`);
-            } else {
-                throw new Error("Invalid structure");
-            }
-        } catch (error) {
-            console.error("Random Command Error:", error);
-            return message.reply("❌ Failed to fetch a random verse. The API might be down or the version is unsupported.");
+    // --- COMMAND: !random ---
+    if (lowerInput === "random") {
+        const data = await fetchBible("https://bible-api.com/data/web/random");
+        if (data?.random_verse) {
+            const v = data.random_verse;
+            return message.reply(`✝️ **Random Verse**\n ${v.text}`);
         }
     }
 
