@@ -9,8 +9,8 @@ BibleBot for Stoat Chat
 4. !versions\ - list all support Bible versions.
 5. Added simple banned words filter - Auto moderator bot function, delete message when banned words detected.
 
-## [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+## [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/livelybride-faith/MenuBarSpacingController/blob/main/LICENSE.txt) file for details.
 
 ## Buy me a coffee 
-[![PayPal](https://img.shields.io/badge/Donate-PayPal-red.svg)](https://www.paypal.com/paypalme/MichelleYeow)
+[![PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/paypalme/MichelleYeow)
