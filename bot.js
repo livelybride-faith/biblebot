@@ -3,6 +3,7 @@ const fetch = require("node-fetch");
 const express = require("express");
 
 // --- 1. WEB SERVER ---
+// Keeps the bot alive on services like Render
 const app = express();
 app.get("/", (req, res) => res.send("BibleBot is Online"));
 app.listen(process.env.PORT || 10000);
@@ -11,6 +12,7 @@ app.listen(process.env.PORT || 10000);
 const client = new Client({ apiURL: "https://api.stoat.chat" });
 const PREFIX = "!";
 
+// Default settings
 let currentVersion = "kjv"; 
 const SUPPORTED_VERSIONS = [
     "web", "kjv", "asv", "bbe", "darby", "dra", "ylt", "oeb-us", 
@@ -22,6 +24,7 @@ client.on("ready", () => console.log(`✅ BibleBot online as ${client.user.usern
 // --- 3. MESSAGE HANDLER ---
 client.on("messageCreate", async (message) => {
     if (!message.content || message.author?.bot) return;
+    
     const input = message.content.trim();
     if (!input.startsWith(PREFIX)) return;
 
@@ -39,17 +42,17 @@ client.on("messageCreate", async (message) => {
             `# 📖 BibleBot Help\n` +
             `**Standard Commands:**\n` +
             `> \`!random\` - Get a random verse.\n` +
-            `> \`![Reference]\` - e.g., \`!John3:16\`\n` +
-            `> \`![Reference]?[Version]\` - e.g., \`!John3:16?kjv\`\n\n` +
+            `> \`![Reference]\` - e.g., \`!John3:16\` or \`!John3:16-18\`\n` +
+            `> \`![Reference]?[Version]\` - e.g., \`!John3:16?web\`\n\n` +
             `**Settings:**\n` +
-            `> \`!version [name]\` - Set default (Current: **${currentVersion.toUpperCase()}**).\n` +
+            `> \`!version [name]\` - Set the default version (Current: **${currentVersion.toUpperCase()}**).\n` +
             `> \`!versions\` - List all supported versions.`
         );
     }
 
     // 📜 VERSIONS LIST
     if (command === "versions") {
-        return message.reply(`**Available:** ${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
+        return message.reply(`**Available Versions:**\n${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
     }
 
     // ⚙️ SET VERSION
@@ -59,40 +62,39 @@ client.on("messageCreate", async (message) => {
             currentVersion = newVer;
             return message.reply(`✅ Default version set to **${newVer.toUpperCase()}**.`);
         }
-        return message.reply(`❌ Invalid version.`);
+        return message.reply(`❌ Invalid version. Type \`!versions\` to see the list.`);
     }
 
-    // 🎲 UPDATED RANDOM COMMAND
+    // 🎲 RANDOM COMMAND (Corrected for random_verse format)
     if (command === "random") {
         try {
-            // Using the /data/ endpoint which matches your specific JSON format
             const res = await fetch(`https://bible-api.com/data/${currentVersion}/random`);
             const data = await res.json();
-
-            // Handle the specific format: data.random_verse
             const v = data.random_verse;
 
             if (v && v.text) {
-                const book = v.book || v.book_name; // Use 'book' based on your provided JSON
+                const book = v.book || v.book_name;
                 const ref = `${book} ${v.chapter}:${v.verse}`;
                 return message.reply(`✝️ (**${currentVersion.toUpperCase()}**) **${ref}**\n${v.text.trim()}`);
             } else {
-                throw new Error("Unexpected API response format");
+                throw new Error("Invalid structure");
             }
         } catch (error) {
-            console.error("Random Error:", error);
+            console.error("Random Command Error:", error);
             return message.reply("❌ Failed to fetch a random verse. Try again in a moment.");
         }
     }
 
-    // 🔍 SMART REFERENCE PARSER
-    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)/i;
+    // 🔍 SMART REFERENCE PARSER (Handles Ranges and Overrides)
+    // Regex: Matches Book, Chapter:Verse, and optional -EndVerse
+    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z]+)?/i;
     const match = command.match(bibleRegex);
 
     if (match) {
         let reference = command;
         let version = currentVersion;
 
+        // Handle version override within the command (e.g., !John3:16?asv)
         if (command.includes("?")) {
             const parts = command.split("?");
             reference = parts[0];
@@ -103,20 +105,27 @@ client.on("messageCreate", async (message) => {
         }
 
         const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
+        
         if (data && data.text) {
-            return message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${data.text}`);
+            // Cap text length to avoid Revolt message limits
+            const responseText = data.text.length > 1800 
+                ? data.text.substring(0, 1800) + "..." 
+                : data.text;
+
+            return message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${responseText}`);
         } else {
-            return message.reply(`❌ Reference not found.`);
+            return message.reply(`❌ Reference **${reference}** not found or format error.`);
         }
     }
 });
 
-// Helper
+// Helper Function
 async function fetchJSON(url) {
     try {
         const res = await fetch(url);
         return await res.json();
     } catch (e) {
+        console.error("API Fetch Error:", e);
         return null;
     }
 }
