@@ -1,7 +1,7 @@
 {
   "name": "biblebot-stoat",
-  "version": "2.0.0",
-  "description": "BibleBot for StoatChat",
+  "version": "2.1.0",
+  "description": "BibleBot for StoatChat 2026",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
