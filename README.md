@@ -1,3 +1,5 @@
+# Join Faith Christian Server in Stoat Chat - https://stt.gg/3vTTwtM8
+
 # biblebot
 BibleBot for Stoat Chat
 
@@ -6,6 +8,7 @@ BibleBot for Stoat Chat
 2. !John 3:16 - return full verse.
 3. !version [name] - set default version.
 4. !versions\ - list all support Bible versions.
+5. Added simple banned words filter - Auto moderator bot function, delete message when banned words detected.
 
 ## Buy me a coffee 
 [![PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/paypalme/MichelleYeow)
