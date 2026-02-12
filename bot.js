@@ -6,7 +6,7 @@ const path = require("path");
 
 // --- 1. WEB SERVER ---
 const app = express();
-app.get("/", (req, res) => res.send("BibleBot & AutoMod are active."));
+app.get("/", (req, res) => res.send("BibleBot & Shield are Active."));
 app.listen(process.env.PORT || 10000);
 
 // --- 2. CONFIGURATION & MODERATION SETUP ---
@@ -19,16 +19,18 @@ const SUPPORTED_VERSIONS = [
 ];
 
 let BANNED_WORDS = [];
+const BANNED_FILE = path.join(__dirname, "banned_words.txt");
 
 function loadBannedWords() {
     try {
-        const filePath = path.join(__dirname, "banned_words.txt");
-        if (fs.existsSync(filePath)) {
-            const rawData = fs.readFileSync(filePath, "utf8");
+        if (fs.existsSync(BANNED_FILE)) {
+            const rawData = fs.readFileSync(BANNED_FILE, "utf8");
             BANNED_WORDS = rawData.split(/[,\r\n]+/)
                 .map(word => word.trim().toLowerCase())
                 .filter(word => word.length > 0);
             console.log(`🛡️ AutoMod: Loaded ${BANNED_WORDS.length} words.`);
+        } else {
+            fs.writeFileSync(BANNED_FILE, ""); // Create empty file if missing
         }
     } catch (err) {
         console.error("❌ Mod Load Error:", err.message);
@@ -48,25 +50,29 @@ client.on("messageCreate", async (message) => {
     const rawContent = message.content.trim();
 
     // --- STEP A: AUTOMOD SCANNING ---
-    const cleanMessage = rawContent.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+    // Remove symbols to catch things like "b.a.n.n.e.d"
+    const cleanMessage = rawContent.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, "");
     const userWords = cleanMessage.split(/\s+/);
+    
+    // Check if any word in the message is in our banned list
     const foundBadWord = userWords.some(word => BANNED_WORDS.includes(word));
 
     if (foundBadWord) {
         try {
             await message.delete();
-            const warning = await message.channel.sendMessage(`⚠️ **AutoMod:** <@${message.author.id}>, please keep the language clean.`);
+            const warning = await message.channel.sendMessage(`⚠️ **AutoMod:** <@${message.author.id}>, please maintain clean language.`);
             setTimeout(() => warning.delete().catch(() => {}), 4000);
-            return; // Stop processing further if it's a banned word
+            return; // Stop processing immediately
         } catch (e) {
-            console.error("Permission Error: Bot needs 'Manage Messages'.");
+            console.error("Permission Error: Bot needs 'Manage Messages' to delete.");
         }
     }
 
     // --- STEP B: COMMAND HANDLING ---
-    // Check for pingmod (Status Check)
+    
+    // Heartbeat check (No prefix needed)
     if (rawContent.toLowerCase() === "pingmod") {
-        return message.reply(`🛡️ **Status:** Active\n📚 **Banned Words:** ${BANNED_WORDS.length}\n✝️ **Bible Version:** ${currentVersion.toUpperCase()}`);
+        return message.reply(`🛡️ **Shield:** Active\n📚 **Banned List:** ${BANNED_WORDS.length} words\n✝️ **Version:** ${currentVersion.toUpperCase()}`);
     }
 
     if (!rawContent.startsWith(PREFIX)) return;
@@ -74,21 +80,36 @@ client.on("messageCreate", async (message) => {
     const args = rawContent.slice(PREFIX.length).split(/ +/);
     const command = args.shift().toLowerCase();
 
+    // 🔨 MOD COMMAND: BAN A NEW WORD
+    if (command === "banword") {
+        const wordToBan = args[0]?.toLowerCase();
+        if (!wordToBan) return message.reply("❌ Usage: `!banword [word]`");
+        
+        if (!BANNED_WORDS.includes(wordToBan)) {
+            BANNED_WORDS.push(wordToBan);
+            fs.appendFileSync(BANNED_FILE, `\n${wordToBan}`);
+            return message.reply(`✅ Added **${wordToBan}** to the shield list.`);
+        } else {
+            return message.reply("⚠️ That word is already banned.");
+        }
+    }
+
     // 🏓 PING
-    if (command === "ping") return message.reply("🏓 **Pong!** Bot is fully operational.");
+    if (command === "ping") return message.reply("🏓 **Pong!** BibleBot is operational.");
 
     // 📖 HELP
     if (command === "help") {
         return message.reply(
             `# 📖 BibleBot & AutoMod\n` +
-            `> \`!random\` - Get a random verse.\n` +
+            `> \`!random\` - Random verse.\n` +
             `> \`![Reference]\` - e.g., \`!John3:16-18\`\n` +
             `> \`!version [name]\` - Change default translation.\n` +
-            `> \`pingmod\` - Check ModBot status.`
+            `> \`!banword [word]\` - Add a word to the filter.\n` +
+            `> \`pingmod\` - Check system status.`
         );
     }
 
-    // 📜 VERSIONS
+    // 📜 LIST VERSIONS
     if (command === "versions") return message.reply(`**Available:** ${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
 
     // ⚙️ SET VERSION
@@ -112,11 +133,11 @@ client.on("messageCreate", async (message) => {
                 return message.reply(`✝️ (**${currentVersion.toUpperCase()}**) **${book} ${v.chapter}:${v.verse}**\n${v.text.trim()}`);
             }
         } catch (error) {
-            return message.reply("❌ Error fetching random verse.");
+            return message.reply("❌ API Error fetching random verse.");
         }
     }
 
-    // 🔍 REFERENCE PARSER
+    // 🔍 REFERENCE PARSER (Handles !John3:16-18 and ?version overrides)
     const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z]+)?/i;
     const match = command.match(bibleRegex);
 
@@ -133,10 +154,11 @@ client.on("messageCreate", async (message) => {
 
         const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
         if (data && data.text) {
+            // Cap length at 1800 characters for Revolt
             const responseText = data.text.length > 1800 ? data.text.substring(0, 1800) + "..." : data.text;
             return message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${responseText}`);
         } else {
-            return message.reply(`❌ Reference not found.`);
+            return message.reply(`❌ Reference **${reference}** not found.`);
         }
     }
 });
