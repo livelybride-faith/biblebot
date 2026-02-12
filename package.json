@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "revolt.js": "latest",
+    "express": "latest",
+    "node-fetch": "^2.6.1"
+  }
+}
