@@ -30,7 +30,6 @@ function loadBannedWords() {
                 .filter(word => word.length > 0);
             console.log(`🛡️ AutoMod: Loaded ${BANNED_WORDS.length} words.`);
         } else {
-            // Create empty file if it doesn't exist
             fs.writeFileSync(BANNED_FILE, ""); 
             console.log("🛡️ AutoMod: No banned_words.txt found. Created empty file.");
         }
@@ -52,10 +51,8 @@ client.on("messageCreate", async (message) => {
     const rawContent = message.content.trim();
 
     // --- STEP A: AUTOMOD SCANNING ---
-    // Clean string for detection (removes symbols to stop bypasses)
     const cleanMessage = rawContent.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, "");
     const userWords = cleanMessage.split(/\s+/);
-    
     const foundBadWord = userWords.some(word => BANNED_WORDS.includes(word));
 
     if (foundBadWord) {
@@ -63,15 +60,14 @@ client.on("messageCreate", async (message) => {
             await message.delete();
             const warning = await message.channel.sendMessage(`⚠️ **AutoMod:** <@${message.author.id}>, please maintain clean language.`);
             setTimeout(() => warning.delete().catch(() => {}), 4000);
-            return; // Stop processing
+            return; 
         } catch (e) {
-            console.error("Permission Error: Bot needs 'Manage Messages' to delete.");
+            console.error("Permission Error");
         }
     }
 
     // --- STEP B: COMMAND HANDLING ---
     
-    // Status check
     if (rawContent.toLowerCase() === "pingmod") {
         return message.reply(`🛡️ **Shield:** Active\n📚 **Banned List:** ${BANNED_WORDS.length} words\n✝️ **Version:** ${currentVersion.toUpperCase()}`);
     }
@@ -79,28 +75,24 @@ client.on("messageCreate", async (message) => {
     if (!rawContent.startsWith(PREFIX)) return;
 
     const args = rawContent.slice(PREFIX.length).split(/ +/);
-    const command = args.shift().toLowerCase();
+    const command = args[0].toLowerCase();
 
-    // 🏓 PING
+    // Standard Commands
     if (command === "ping") return message.reply("🏓 **Pong!** Bot is active.");
-
-    // 📖 HELP
     if (command === "help") {
         return message.reply(
             `# 📖 BibleBot Help\n` +
-            `> \`!random\` - Get a random verse.\n` +
-            `> \`![Reference]\` - e.g., \`!John3:16-18\`\n` +
+            `> \`!John 3:16\` or \`!John3:16\` - Lookup a verse.\n` +
+            `> \`!Mark 4:5-10\` - Lookup a range of verses.\n` +
+            `> \`!John 3:16 !Gen 1:1\` - Lookup multiple references.\n` +
             `> \`!version [name]\` - Change default translation.\n` +
-            `> \`pingmod\` - Check system status.`
+            `> \`!random\` - Get a random verse.`
         );
     }
-
-    // 📜 VERSIONS
     if (command === "versions") return message.reply(`**Available:** ${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
 
-    // ⚙️ SET VERSION
     if (command === "version") {
-        const newVer = args[0]?.toLowerCase();
+        const newVer = args[1]?.toLowerCase();
         if (SUPPORTED_VERSIONS.includes(newVer)) {
             currentVersion = newVer;
             return message.reply(`✅ Default version set to **${newVer.toUpperCase()}**.`);
@@ -108,42 +100,55 @@ client.on("messageCreate", async (message) => {
         return message.reply(`❌ Invalid version.`);
     }
 
-    // 🎲 RANDOM VERSE
     if (command === "random") {
         try {
             const res = await fetch(`https://bible-api.com/data/${currentVersion}/random`);
             const data = await res.json();
             const v = data.random_verse;
-            if (v && v.text) {
+            if (v) {
                 const book = v.book || v.book_name;
                 return message.reply(`✝️ (**${currentVersion.toUpperCase()}**) **${book} ${v.chapter}:${v.verse}**\n${v.text.trim()}`);
             }
-        } catch (error) {
-            return message.reply("❌ Error fetching random verse.");
-        }
+        } catch (error) { return message.reply("❌ Error fetching random verse."); }
     }
 
-    // 🔍 REFERENCE PARSER
-    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z]+)?/i;
-    const match = command.match(bibleRegex);
+    // --- STEP C: BIBLE REFERENCE PARSER (Handles Ranges, Spaces, and Multiples) ---
+    const bibleRegex = /!([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z-]+)?/gi;
+    const matches = [...rawContent.matchAll(bibleRegex)];
 
-    if (match) {
-        let reference = command;
-        let version = currentVersion;
+    if (matches.length > 0) {
+        // Limit to 3 verses to prevent spam
+        const results = matches.slice(0, 3); 
 
-        if (command.includes("?")) {
-            const parts = command.split("?");
-            reference = parts[0];
-            const requestedVersion = parts[1].toLowerCase();
-            if (SUPPORTED_VERSIONS.includes(requestedVersion)) version = requestedVersion;
-        }
+        for (const match of results) {
+            let reference = match[0].slice(1); // Remove "!"
+            let version = currentVersion;
 
-        const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
-        if (data && data.text) {
-            const responseText = data.text.length > 1800 ? data.text.substring(0, 1800) + "..." : data.text;
-            return message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${responseText}`);
-        } else {
-            return message.reply(`❌ Reference not found.`);
+            // Handle inline version: !John 3:16?asv
+            if (reference.includes("?")) {
+                const parts = reference.split("?");
+                reference = parts[0];
+                const requestedVersion = parts[1].toLowerCase();
+                if (SUPPORTED_VERSIONS.includes(requestedVersion)) version = requestedVersion;
+            }
+
+            const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
+
+            if (data && data.text) {
+                let text = data.text.trim();
+                let suffix = "";
+
+                // If text is too long, truncate and provide a Read More link
+                if (text.length > 1800) {
+                    text = text.substring(0, 1800) + "...";
+                    const externalLink = `https://www.biblegateway.com/passage/?search=${encodeURIComponent(data.reference)}&version=${version.toUpperCase()}`;
+                    suffix = `\n\n📖 **[Read full passage on Bible Gateway](${externalLink})**`;
+                }
+
+                await message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${text}${suffix}`);
+            } else {
+                await message.reply(`❌ Reference **${reference}** not found.`);
+            }
         }
     }
 });
