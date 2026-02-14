@@ -77,7 +77,7 @@ client.on("error", (err) => {
 
 // Catch unhandled promises to prevent process death
 process.on("unhandledRejection", (reason, promise) => {
-    console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+    console.error("❌ Unhandled Rejection at:", promise, "reason", reason);
 });
 
 client.on("ready", () => {
@@ -116,28 +116,31 @@ client.on("messageCreate", async (message) => {
 
     if (!rawContent.startsWith(PREFIX)) return;
 
-    const args = rawContent.slice(PREFIX.length).split(/ +/);
-    const command = args.shift().toLowerCase();
+    // Get the full content after the prefix
+    const fullCommand = rawContent.slice(PREFIX.length).trim();
+    // Split for argument-based commands (like !version)
+    const args = fullCommand.split(/ +/);
+    const commandName = args.shift().toLowerCase();
 
     // 🏓 PING
-    if (command === "ping") return message.reply("🏓 **Pong!** Bot is active.");
+    if (commandName === "ping") return message.reply("🏓 **Pong!** Bot is active.");
 
     // 📖 HELP
-    if (command === "help") {
+    if (commandName === "help") {
         return message.reply(
             `# 📖 BibleBot Help\n` +
             `> \`!random\` - Get a random verse.\n` +
-            `> \`![Reference]\` - e.g., \`!John3:16-18\`\n` +
+            `> \`![Reference]\` - e.g., \`!John 3:16\` or \`!John3:16\`\n` +
             `> \`!version [name]\` - Change default translation.\n` +
             `> \`pingmod\` - Check system status.`
         );
     }
 
     // 📜 VERSIONS
-    if (command === "versions") return message.reply(`**Available:** ${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
+    if (commandName === "versions") return message.reply(`**Available:** ${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
 
     // ⚙️ SET VERSION
-    if (command === "version") {
+    if (commandName === "version") {
         const newVer = args[0]?.toLowerCase();
         if (SUPPORTED_VERSIONS.includes(newVer)) {
             currentVersion = newVer;
@@ -147,7 +150,7 @@ client.on("messageCreate", async (message) => {
     }
 
     // 🎲 RANDOM VERSE
-    if (command === "random") {
+    if (commandName === "random") {
         try {
             const res = await fetch(`https://bible-api.com/data/${currentVersion}/random`);
             const data = await res.json();
@@ -161,16 +164,16 @@ client.on("messageCreate", async (message) => {
         }
     }
 
-    // 🔍 REFERENCE PARSER
+    // 🔍 REFERENCE PARSER (Handles spaces via fullCommand)
     const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z]+)?/i;
-    const match = command.match(bibleRegex);
+    const match = fullCommand.match(bibleRegex);
 
     if (match) {
-        let reference = command;
+        let reference = fullCommand;
         let version = currentVersion;
 
-        if (command.includes("?")) {
-            const parts = command.split("?");
+        if (fullCommand.includes("?")) {
+            const parts = fullCommand.split("?");
             reference = parts[0];
             const requestedVersion = parts[1].toLowerCase();
             if (SUPPORTED_VERSIONS.includes(requestedVersion)) version = requestedVersion;
