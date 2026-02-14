@@ -8,7 +8,7 @@ const path = require("path");
 const app = express();
 app.get("/", (req, res) => res.send("BibleBot & Shield are Active."));
 
-// NEW: Endpoint to test Bible API fetching via browser
+// Endpoint to test Bible API fetching via browser
 app.get("/get", async (req, res) => {
     const reference = req.query.v;
     const version = req.query.version || "kjv"; // Default to KJV if not specified
@@ -31,7 +31,10 @@ app.get("/get", async (req, res) => {
     }
 });
 
-app.listen(process.env.PORT || 10000);
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`🌐 Web server listening on port ${PORT}`);
+});
 
 // --- 2. CONFIGURATION & MODERATION SETUP ---
 const client = new Client({ apiURL: "https://api.stoat.chat" });
@@ -65,11 +68,23 @@ function loadBannedWords() {
 
 loadBannedWords();
 
+// --- 3. ERROR HANDLING (FIXES CRASHES) ---
+
+// Catch client errors (like network dropouts)
+client.on("error", (err) => {
+    console.error("❌ Revolt Client Error:", err);
+});
+
+// Catch unhandled promises to prevent process death
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
+});
+
 client.on("ready", () => {
     console.log(`✅ Online as ${client.user.username}. Shield & Scripture active.`);
 });
 
-// --- 3. MAIN MESSAGE HANDLER ---
+// --- 4. MAIN MESSAGE HANDLER ---
 client.on("messageCreate", async (message) => {
     if (!message.content || message.author?.bot) return;
 
