@@ -52,12 +52,12 @@ function loadBannedWords() {
     try {
         if (fs.existsSync(BANNED_FILE)) {
             const rawData = fs.readFileSync(BANNED_FILE, "utf8");
-            BANNED_WORDS = rawData.split(/[,\r\n]+/)
+            BANNED_WORDS = rawData.split(/[\r\n]+/)
+                .flatMap(line => line.split(','))
                 .map(word => word.trim().toLowerCase())
                 .filter(word => word.length > 0);
             console.log(`🛡️ AutoMod: Loaded ${BANNED_WORDS.length} words.`);
         } else {
-            // Create empty file if it doesn't exist
             fs.writeFileSync(BANNED_FILE, ""); 
             console.log("🛡️ AutoMod: No banned_words.txt found. Created empty file.");
         }
@@ -68,16 +68,13 @@ function loadBannedWords() {
 
 loadBannedWords();
 
-// --- 3. ERROR HANDLING (FIXES CRASHES) ---
-
-// Catch client errors (like network dropouts)
+// --- 3. ERROR HANDLING ---
 client.on("error", (err) => {
     console.error("❌ Revolt Client Error:", err);
 });
 
-// Catch unhandled promises to prevent process death
 process.on("unhandledRejection", (reason, promise) => {
-    console.error("❌ Unhandled Rejection at:", promise, "reason", reason);
+    console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 client.on("ready", () => {
@@ -91,17 +88,15 @@ client.on("messageCreate", async (message) => {
     const rawContent = message.content.trim();
 
     // --- STEP A: AUTOMOD SCANNING ---
-    // Clean string for detection (removes symbols to stop bypasses)
-    const cleanMessage = rawContent.toLowerCase().replace(/[^a-zA-Z0-9\s]/g, "");
-    const userWords = cleanMessage.split(/\s+/);
-    const foundBadWord = userWords.some(word => BANNED_WORDS.includes(word));
+    const lowerContent = rawContent.toLowerCase();
+    const foundBadWord = BANNED_WORDS.some(word => lowerContent.includes(word));
 
     if (foundBadWord) {
         try {
             await message.delete();
             const warning = await message.channel.sendMessage(`⚠️ **AutoMod:** <@${message.author.id}>, please maintain clean language.`);
             setTimeout(() => warning.delete().catch(() => {}), 4000);
-            return; // Stop processing
+            return;
         } catch (e) {
             console.error("Permission Error: Bot needs 'Manage Messages' to delete.");
         }
@@ -109,16 +104,13 @@ client.on("messageCreate", async (message) => {
 
     // --- STEP B: COMMAND HANDLING ---
     
-    // Status check
     if (rawContent.toLowerCase() === "pingmod") {
         return message.reply(`🛡️ **Shield:** Active\n📚 **Banned List:** ${BANNED_WORDS.length} words\n✝️ **Version:** ${currentVersion.toUpperCase()}`);
     }
 
     if (!rawContent.startsWith(PREFIX)) return;
 
-    // Get the full content after the prefix
     const fullCommand = rawContent.slice(PREFIX.length).trim();
-    // Split for argument-based commands (like !version)
     const args = fullCommand.split(/ +/);
     const commandName = args.shift().toLowerCase();
 
@@ -130,7 +122,7 @@ client.on("messageCreate", async (message) => {
         return message.reply(
             `# 📖 BibleBot Help\n` +
             `> \`!random\` - Get a random verse.\n` +
-            `> \`![Reference]\` - e.g., \`!John 3:16\` or \`!John3:16\`\n` +
+            `> \`![Reference]\` - e.g., \`!John 3:16\`\n` +
             `> \`!version [name]\` - Change default translation.\n` +
             `> \`pingmod\` - Check system status.`
         );
@@ -164,7 +156,7 @@ client.on("messageCreate", async (message) => {
         }
     }
 
-    // 🔍 REFERENCE PARSER (Handles spaces via fullCommand)
+    // 🔍 REFERENCE PARSER
     const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z]+)?/i;
     const match = fullCommand.match(bibleRegex);
 
