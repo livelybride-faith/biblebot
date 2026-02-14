@@ -83,8 +83,8 @@ client.on("messageCreate", async (message) => {
         return message.reply(
             `# 📖 BibleBot Help\n` +
             `> \`!John 3:16\` or \`!John3:16\` - Lookup a verse.\n` +
+            `> \`!3John 2\` - Works for single-chapter books.\n` +
             `> \`!Mark 4:5-10\` - Lookup a range of verses.\n` +
-            `> \`!John 3:16 !Gen 1:1\` - Lookup multiple references.\n` +
             `> \`!version [name]\` - Change default translation.\n` +
             `> \`!random\` - Get a random verse.`
         );
@@ -112,33 +112,32 @@ client.on("messageCreate", async (message) => {
         } catch (error) { return message.reply("❌ Error fetching random verse."); }
     }
 
-    // --- STEP C: BIBLE REFERENCE PARSER (Handles Ranges, Spaces, and Multiples) ---
-    const bibleRegex = /!([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z-]+)?/gi;
+    // --- STEP C: BIBLE REFERENCE PARSER ---
+    // UPDATED REGEX: Handles "Book Chapter:Verse", "Book Verse", and "Book Chapter:Verse-End"
+    const bibleRegex = /!([1-3]?\s?[a-zA-Z]+)\s?(\d+)(?::(\d+))?(-(\d+))?(\?[a-z-]+)?/gi;
     const matches = [...rawContent.matchAll(bibleRegex)];
 
     if (matches.length > 0) {
-        // Limit to 3 verses to prevent spam
         const results = matches.slice(0, 3); 
 
         for (const match of results) {
-            let reference = match[0].slice(1); // Remove "!"
+            let fullMatch = match[0].slice(1); // Remove "!"
             let version = currentVersion;
 
             // Handle inline version: !John 3:16?asv
-            if (reference.includes("?")) {
-                const parts = reference.split("?");
-                reference = parts[0];
+            if (fullMatch.includes("?")) {
+                const parts = fullMatch.split("?");
+                fullMatch = parts[0];
                 const requestedVersion = parts[1].toLowerCase();
                 if (SUPPORTED_VERSIONS.includes(requestedVersion)) version = requestedVersion;
             }
 
-            const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
+            const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(fullMatch)}?translation=${version}`);
 
             if (data && data.text) {
                 let text = data.text.trim();
                 let suffix = "";
 
-                // If text is too long, truncate and provide a Read More link
                 if (text.length > 1800) {
                     text = text.substring(0, 1800) + "...";
                     const externalLink = `https://www.biblegateway.com/passage/?search=${encodeURIComponent(data.reference)}&version=${version.toUpperCase()}`;
@@ -147,13 +146,15 @@ client.on("messageCreate", async (message) => {
 
                 await message.reply(`📖 **${data.reference}** (${version.toUpperCase()})\n${text}${suffix}`);
             } else {
-                await message.reply(`❌ Reference **${reference}** not found.`);
+                // Ignore if it's just a command like !help or !ping that the regex accidentally caught
+                if (!["help", "ping", "version", "versions", "random"].includes(command)) {
+                   await message.reply(`❌ Reference **${fullMatch}** not found.`);
+                }
             }
         }
     }
 });
 
-// Helper
 async function fetchJSON(url) {
     try {
         const res = await fetch(url);
