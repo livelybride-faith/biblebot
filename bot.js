@@ -7,6 +7,30 @@ const path = require("path");
 // --- 1. WEB SERVER ---
 const app = express();
 app.get("/", (req, res) => res.send("BibleBot & Shield are Active."));
+
+// NEW: Endpoint to test Bible API fetching via browser
+app.get("/get", async (req, res) => {
+    const reference = req.query.v;
+    const version = req.query.version || "kjv"; // Default to KJV if not specified
+
+    if (!reference) {
+        return res.status(400).send("Please provide a reference using ?v=BookChapter:Verse");
+    }
+
+    try {
+        const response = await fetch(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
+        const data = await response.json();
+        
+        if (data && data.text) {
+            res.json(data);
+        } else {
+            res.status(404).send("Reference not found.");
+        }
+    } catch (error) {
+        res.status(500).send("Error fetching from Bible API.");
+    }
+});
+
 app.listen(process.env.PORT || 10000);
 
 // --- 2. CONFIGURATION & MODERATION SETUP ---
