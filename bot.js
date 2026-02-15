@@ -4,38 +4,32 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 
-// --- 1. WEB SERVER ---
+// --- 1. CONFIGURATION & SWITCHES ---
+const MOD_ENABLED = process.env.MOD_ENABLED?.toLowerCase() === "true";
+const BOT_TOKEN = process.env.BOT_TOKEN;
+
+// --- 2. WEB SERVER ---
 const app = express();
 app.get("/", (req, res) => res.send("BibleBot & Shield are Active."));
 
 app.get("/get", async (req, res) => {
     const reference = req.query.v;
     const version = req.query.version || "kjv";
-
-    if (!reference) {
-        return res.status(400).send("Please provide a reference using ?v=BookChapter:Verse");
-    }
+    if (!reference) return res.status(400).send("Provide reference: ?v=BookChapter:Verse");
 
     try {
         const response = await fetch(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
         const data = await response.json();
-        
-        if (data && data.text) {
-            res.json(data);
-        } else {
-            res.status(404).send("Reference not found.");
-        }
+        data && data.text ? res.json(data) : res.status(404).send("Reference not found.");
     } catch (error) {
         res.status(500).send("Error fetching from Bible API.");
     }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-    console.log(`Web server listening on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`));
 
-// --- 2. CONFIGURATION & MODERATION SETUP ---
+// --- 3. BOT SETUP & BANNED WORDS ---
 const client = new Client({ apiURL: "https://api.stoat.chat" });
 const PREFIX = "!";
 let currentVersion = "kjv"; 
@@ -65,47 +59,52 @@ function loadBannedWords() {
     }
 }
 
-// Load words on startup
-loadBannedWords();
+// Only load and run moderation if the switch is TRUE
+if (MOD_ENABLED) {
+    loadBannedWords();
+} else {
+    console.log("AutoMod: Feature is disabled (MOD_ENABLED is not true).");
+}
 
-// --- 3. ERROR HANDLING ---
-client.on("error", (err) => {
-    console.error("Revolt Client Error:", err);
-});
+// --- 4. EVENT HANDLER ---
+
+// Error handler
+client.on("error", (err) => console.error("Client Error:", err));
 
 process.on("unhandledRejection", (reason, promise) => {
     console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 client.on("ready", () => {
-    console.log(`Online as ${client.user.username}. Shield & Scripture active.`);
+    console.log(`Online as ${client.user.username}. BibleBot active.`);
 });
 
-// --- 4. MAIN MESSAGE HANDLER ---
+// Message handler
 client.on("messageCreate", async (message) => {
     if (!message.content || message.author?.bot) return;
 
     const rawContent = message.content.trim();
     const lowerContent = rawContent.toLowerCase();
 
-    // --- STEP A: AUTOMOD SCANNING ---
-    const foundBadWord = BANNED_WORDS.some(word => lowerContent.includes(word));
-
-    if (foundBadWord) {
-        try {
-            await message.delete();
-            const warning = await message.channel.sendMessage(`AutoMod: <@${message.author.id}>, please maintain clean language.`);
-            setTimeout(() => warning.delete().catch(() => {}), 4000);
-            return;
-        } catch (e) {
-            console.error("Permission Error: Bot needs 'Manage Messages' to delete.");
+    // --- STEP A: AUTOMOD (Only if enabled) ---
+    if (MOD_ENABLED && BANNED_WORDS.length > 0) {
+        const foundBadWord = BANNED_WORDS.some(word => lowerContent.includes(word));
+        if (foundBadWord) {
+            try {
+                await message.delete();
+                const warning = await message.channel.sendMessage(`AutoMod: <@${message.author.id}>, please maintain clean language.`);
+                setTimeout(() => warning.delete().catch(() => {}), 4000);
+                return;
+            } catch (e) {
+                console.error("Permission Error: Missing 'Manage Messages' permission.");
+            }
         }
     }
 
-    // --- STEP B: COMMAND HANDLING ---
-    
+    // --- STEP B: COMMAND handler ---
     if (lowerContent === "pingmod") {
-        return message.reply(`Shield: Active\nBanned List: ${BANNED_WORDS.length} words\nVersion: ${currentVersion.toUpperCase()}`);
+        const modStatus = MOD_ENABLED ? `Active (${BANNED_WORDS.length} words)` : "Disabled";
+        return message.reply(`Shield Status:\n- Moderation: ${modStatus}\n- Bible Version: ${currentVersion.toUpperCase()}`);
     }
 
     if (!rawContent.startsWith(PREFIX)) return;
@@ -114,10 +113,10 @@ client.on("messageCreate", async (message) => {
     const args = fullCommand.split(/ +/);
     const commandName = args.shift().toLowerCase();
 
-    // PING
-    if (commandName === "ping") return message.reply("Pong! Bot is active.");
+    // !ping
+    if (commandName === "ping") return message.reply("Pong! BibleBot is active.");
 
-    // HELP
+    // !help
     if (commandName === "help") {
         return message.reply(
             `# BibleBot Help\n` +
@@ -128,10 +127,10 @@ client.on("messageCreate", async (message) => {
         );
     }
 
-    // VERSIONS
+    // Versions
     if (commandName === "versions") return message.reply(`Available: ${SUPPORTED_VERSIONS.map(v => `\`${v}\``).join(", ")}`);
 
-    // SET VERSION
+    // !version - set bible version
     if (commandName === "version") {
         const newVer = args[0]?.toLowerCase();
         if (SUPPORTED_VERSIONS.includes(newVer)) {
@@ -141,7 +140,7 @@ client.on("messageCreate", async (message) => {
         return message.reply(`Invalid version.`);
     }
 
-    // RANDOM VERSE
+    // !random feature
     if (commandName === "random") {
         try {
             const res = await fetch(`https://bible-api.com/data/${currentVersion}/random`);
@@ -156,7 +155,7 @@ client.on("messageCreate", async (message) => {
         }
     }
 
-    // REFERENCE PARSER
+    // Reference parser
     const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)(-(\d+))?(\?[a-z]+)?/i;
     const match = fullCommand.match(bibleRegex);
 
@@ -189,4 +188,9 @@ async function fetchJSON(url) {
     } catch (e) { return null; }
 }
 
-client.loginBot(process.env.BOT_TOKEN);
+// --- START ---
+if (!BOT_TOKEN) {
+    console.error("Missing BOT_TOKEN environment variable!");
+} else {
+    client.loginBot(BOT_TOKEN);
+}
