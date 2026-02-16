@@ -31,6 +31,35 @@ app.listen(PORT, () => console.log(`Web server listening on port ${PORT}`));
 
 // --- 3. BOT SETUP & BANNED WORDS ---
 const client = new Client({ apiURL: "https://api.stoat.chat" });
+
+async function startBot() {
+    try {
+        await client.loginBot(BOT_TOKEN);
+    } catch (err) {
+        console.error("Login failed, retrying in 10s...", err.message);
+        setTimeout(startBot, 10000);
+    }
+}
+
+// Global error listener to prevent process exit
+client.on("error", (err) => {
+    console.error("Socket Error:", err);
+    if (err.includes?.("Socket closed") || err.code === "ECONNRESET") {
+        console.log("Attempting to recover connection...");
+        // Re-login logic if necessary
+    }
+});
+
+// Use a safe reply helper to prevent crashes
+async function safeReply(message, content) {
+    try {
+        if (!client.ready) throw new Error("Client not ready");
+        return await message.reply(content);
+    } catch (e) {
+        console.error("Failed to send message (Socket closed):", e.message);
+    }
+}
+
 const PREFIX = "!";
 let currentVersion = "kjv"; 
 const SUPPORTED_VERSIONS = [
@@ -114,7 +143,7 @@ client.on("messageCreate", async (message) => {
     const commandName = args.shift().toLowerCase();
 
     // !ping
-    if (commandName === "ping") return message.reply("Pong! BibleBot is active.");
+    if (commandName === "ping") return safeReply(message, "Pong! BibleBot is active.");
 
     // !help
     if (commandName === "help") {
