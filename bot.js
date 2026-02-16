@@ -103,7 +103,7 @@ client.on("messageCreate", async (message) => {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
-    if (commandName === "ping") return message.channel.sendMessage("Pong! BibleBot is live.");
+    if (commandName === "ping") return message.channel.sendMessage("Pong! BibleBot is active.");
     
     if (commandName === "help") {
         return message.channel.sendMessage("# BibleBot Help\n> `!random` | `![Ref]` | `!version [name]`");
