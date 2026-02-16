@@ -39,6 +39,8 @@ app.listen(process.env.PORT || 10000, () => console.log(`Web server listening on
 
 // --- 3. BOT SETUP & AUTO-MOD ---
 const client = new Client(); // Stoat.js connects to Stoat by default
+// Prevent the "Unhandled error event" crash
+client.on("error", (err) => console.error("Socket Error:", err));
 
 let BANNED_WORDS = [];
 const BANNED_FILE = path.join(__dirname, "banned_words.txt");
@@ -116,11 +118,13 @@ client.on("messageCreate", async (message) => {
         return message.channel.sendMessage("Invalid version.");
     }
 
-    if (commandName === "random") {
+if (commandName === "random") {
         const data = await fetchJSON(`https://bible-api.com/data/${currentVersion}/random`);
         if (data?.random_verse) {
             const v = data.random_verse;
-            return message.channel.sendMessage(`**${v.book_name} ${v.chapter}:${v.verse}** (${currentVersion})\n${v.text}`);
+            // Use v.book_name OR v.book (fallback) to prevent "undefined"
+            const book = v.book_name || v.book || "Reference"; 
+            return message.channel.sendMessage(`**${book} ${v.chapter}:${v.verse}** (${currentVersion.toUpperCase()})\n${v.text}`);
         }
     }
 
@@ -138,8 +142,10 @@ client.on("messageCreate", async (message) => {
 
         const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
         if (data?.text) {
+            // Ensure data.reference exists, otherwise fall back to the reference variable
+            const ref = data.reference || reference; 
             const text = data.text.length > 1500 ? data.text.substring(0, 1500) + "..." : data.text;
-            return message.channel.sendMessage(`**${data.reference}** (${version.toUpperCase()})\n${text}`);
+            return message.channel.sendMessage(`**${ref}** (${version.toUpperCase()})\n${text}`);
         }
     }
 });
