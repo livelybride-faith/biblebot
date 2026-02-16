@@ -1,0 +1,13 @@
+{
+  "name": "biblebot-stoat",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "revolt.js": "latest",
+    "express": "latest",
+    "node-fetch": "^2.6.1"
+  }
+}
