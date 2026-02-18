@@ -98,6 +98,27 @@ client.on("messageCreate", async (message) => {
         return message.channel.sendMessage(`Shield: ${MOD_ENABLED ? "Active" : "Off"} | Version: ${currentVersion.toUpperCase()}`);
     }
 
+    // Regex matches: Book Chapter:Verse-Range?version (e.g., John 3:16 or !1 John 2:1-5?asv)
+    const bibleRegex = /([1-3]?\s?[a-zA-Z]+)\s*(\d+):(\d+)(?:-(\d+))?(?:\?([a-zA-Z-]+))?/gi;
+    const matches = [...message.content.matchAll(bibleRegex)];
+
+    if (matches.length > 0) {
+        for (const match of matches) {
+            const [fullMatch, book, chapter, verse, endVerse, customVersion] = match;
+            const version = SUPPORTED_VERSIONS.includes(customVersion?.toLowerCase()) ? customVersion.toLowerCase() : currentVersion;
+            const reference = endVerse ? `${book}${chapter}:${verse}-${endVerse}` : `${book}${chapter}:${verse}`;
+
+            const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
+            
+            if (data?.text) {
+                const ref = data.reference || reference;
+                const text = data.text.length > 1000 ? data.text.substring(0, 1000) + "..." : data.text;
+                await message.channel.sendMessage(`**${ref}** (${version.toUpperCase()})\n${text}`);
+            }
+        }
+        return; // Exit so it doesn't try to process standard commands
+    }
+
     if (!message.content.startsWith(PREFIX)) return;
 
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
@@ -129,7 +150,7 @@ if (commandName === "random") {
     }
 
     // Verse Parser (Matches: !John 3:16 or !John 3:16?kjv)
-    const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)/i;
+    //const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)/i;
     if (bibleRegex.test(commandName + " " + args.join(" "))) {
         let reference = message.content.slice(1);
         let version = currentVersion;
