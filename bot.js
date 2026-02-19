@@ -127,7 +127,7 @@ client.on("messageCreate", async (message) => {
     if (commandName === "ping") return message.channel.sendMessage("Pong! BibleBot is active.");
     
     if (commandName === "help") {
-        return message.channel.sendMessage("# BibleBot Help\n> `!random` | `![Ref]` | `!version [name]`");
+        return message.channel.sendMessage("# BibleBot Help\n> `!random - random verse. ` | `pingmod - check status & default version. ` | `!version [name] - set default version`| `!versions - display available versions`");
     }
 
     if (commandName === "version") {
@@ -137,6 +137,11 @@ client.on("messageCreate", async (message) => {
             return message.channel.sendMessage(`Default set to **${newVer.toUpperCase()}**.`);
         }
         return message.channel.sendMessage("Invalid version.");
+    }
+
+    if (commandName === "versions") {
+        const list = SUPPORTED_VERSIONS.map(v => v.toUpperCase()).join(", ");
+        return message.channel.sendMessage(`**Available Versions:**\n${list}`);
     }
 
 if (commandName === "random") {
