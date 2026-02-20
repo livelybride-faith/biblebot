@@ -5,24 +5,49 @@ import path from "path";
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
-// Fix for __dirname in ES Modules
+// Global error handling
+process.on('unhandledRejection', (reason) => console.error('Global Rejection:', reason));
+process.on('uncaughtException', (err) => console.error('Global Exception:', err));
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- 1. CONFIGURATION ---
+// --- 1. CONFIGURATION & PREFS ---
 const MOD_ENABLED = process.env.MOD_ENABLED?.toLowerCase() === "true";
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const PREFIX = "!";
+let globalDefaultVersion = "kjv"; 
 
-let currentVersion = "kjv"; 
 const SUPPORTED_VERSIONS = [
     "web", "kjv", "asv", "bbe", "darby", "dra", "ylt", "oeb-us", 
     "oeb-cw", "webbe", "almeida", "rccv", "bkr", "cuv", "clementine", "cherokee"
 ];
 
+// --- User's preferred bible's version functions ---
+const PREFS_FILE = path.join(__dirname, "user_prefs.json");
+let userPrefs = {};
+
+function loadPrefs() {
+    try {
+        if (fs.existsSync(PREFS_FILE)) {
+            userPrefs = JSON.parse(fs.readFileSync(PREFS_FILE, "utf8"));
+        }
+    } catch (e) { console.error("Prefs load error:", e); }
+}
+
+function savePrefs() {
+    try {
+        fs.writeFileSync(PREFS_FILE, JSON.stringify(userPrefs, null, 2));
+    } catch (e) { console.error("Prefs save error:", e); }
+}
+
+loadPrefs();
+
 // --- 2. WEB SERVER ---
 const app = express();
-app.get("/", (req, res) => res.send("BibleBot & Shield are Active."));
+app.get("/", (req, res) => res.send("BibleBot is Active."));
+
+// --- Get URL to check whether bible-api is working ---
 app.get("/get", async (req, res) => {
     const reference = req.query.v;
     const version = req.query.version || "kjv";
@@ -35,16 +60,16 @@ app.get("/get", async (req, res) => {
         res.status(500).send("Error fetching from Bible API.");
     }
 });
-app.listen(process.env.PORT || 10000, () => console.log(`Web server listening on port ${process.env.PORT || 10000}`));
+app.listen(process.env.PORT || 10000);
 
-// --- 3. BOT SETUP & AUTO-MOD ---
-const client = new Client(); // Stoat.js connects to Stoat by default
+// --- 3. BOT INITIALIZATION ---
+const client = new Client();
 // Prevent the "Unhandled error event" crash
 client.on("error", (err) => console.error("Socket Error:", err));
 
+// --- 4. BANNED WORDS FILTER ---
 let BANNED_WORDS = [];
 const BANNED_FILE = path.join(__dirname, "banned_words.txt");
-
 function loadBannedWords() {
     try {
         if (fs.existsSync(BANNED_FILE)) {
@@ -62,121 +87,105 @@ function loadBannedWords() {
         console.error("Mod Load Error:", err.message);
     }
 }
-
 if (MOD_ENABLED) loadBannedWords();
 
-// --- 4. HEARTBEAT & EVENTS ---
+// --- 5. EVENTS ---
 client.on("ready", () => {
     console.log(`Online as ${client.user.username}.`);
-    
-    // Heartbeat to prevent Stoat connection drop
     setInterval(async () => {
-        try { await client.users.fetch(client.user.id); } 
-        catch (e) { console.error("Heartbeat failed"); }
+        try { await client.users.fetch(client.user.id); } catch (e) {}
     }, 25000);
 });
 
 client.on("messageCreate", async (message) => {
-    if (!message.content || message.author?.bot) return;
+    // CRITICAL: Defensive check to ensure message and channel exist
+    if (!message || !message.content || message.author?.bot || !message.channel) return;
 
-    const lowerContent = message.content.toLowerCase();
+    try {
+        const userDefault = userPrefs[message.author.id] || globalDefaultVersion;
+        const lowerContent = message.content.toLowerCase();
 
-    // --- STEP A: AUTOMOD ---
-    if (MOD_ENABLED && BANNED_WORDS.length > 0) {
-        if (BANNED_WORDS.some(word => lowerContent.includes(word))) {
+        // --- STEP A: BANNED WORDS FILTER ---
+        if (MOD_ENABLED && BANNED_WORDS.some(word => lowerContent.includes(word))) {
             try {
                 await message.delete();
-                const warn = await message.channel.sendMessage(`AutoMod: <@${message.author.id}>, that language is not allowed.`);
-                setTimeout(() => warn.delete().catch(() => {}), 4000);
+                const warn = await message.channel?.sendMessage(`AutoMod: <@${message.author.id}>, that language is not allowed.`);
+                if (warn) setTimeout(() => warn.delete().catch(() => {}), 4000);
                 return;
-            } catch (e) { console.error("Mod Error: Missing Permissions"); }
+            } catch (e) { console.error("Mod Delete Error"); }
         }
-    }
 
-    // --- STEP B: COMMANDS ---
-    if (lowerContent === "pingmod") {
-        return message.channel.sendMessage(`Shield: ${MOD_ENABLED ? "Active" : "Off"} | Version: ${currentVersion.toUpperCase()}`);
-    }
+        // --- STEP B: BIBLE PARSER ---
+        const bibleRegex = /([1-3]?\s?[a-zA-Z]+)\s*(\d+):(\d+)(?:-(\d+))?(?:[\s?]([a-zA-Z- ,]+))?/gi;
+        const matches = [...message.content.matchAll(bibleRegex)];
 
-    // Regex matches: Book Chapter:Verse-Range?version (e.g., John 3:16 or !1 John 2:1-5?asv)
-    const bibleRegex = /([1-3]?\s?[a-zA-Z]+)\s*(\d+):(\d+)(?:-(\d+))?(?:\?([a-zA-Z-]+))?/gi;
-    const matches = [...message.content.matchAll(bibleRegex)];
+        if (matches.length > 0) {
+            let processedMatch = false;
+            for (const match of matches) {
+                const [fullMatch, book, chapter, verse, endVerse, versionsPart] = match;
+                let requestedVersions = [];
+                if (versionsPart) {
+                    const potentialVersions = versionsPart.toLowerCase().split(/[ ,]+/).filter(v => v.length > 0);
+                    requestedVersions = potentialVersions.filter(v => SUPPORTED_VERSIONS.includes(v));
+                }
+                if (requestedVersions.length === 0) requestedVersions = [userDefault];
+                const reference = endVerse ? `${book} ${chapter}:${verse}-${endVerse}` : `${book} ${chapter}:${verse}`;
 
-    if (matches.length > 0) {
-        for (const match of matches) {
-            const [fullMatch, book, chapter, verse, endVerse, customVersion] = match;
-            const version = SUPPORTED_VERSIONS.includes(customVersion?.toLowerCase()) ? customVersion.toLowerCase() : currentVersion;
-            const reference = endVerse ? `${book}${chapter}:${verse}-${endVerse}` : `${book}${chapter}:${verse}`;
+                for (const ver of requestedVersions) {
+                    const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${ver}`);
+                    if (data?.text) {
+                        processedMatch = true;
+                        const ref = data.reference || reference;
+                        const text = data.text.length > 1200 ? data.text.substring(0, 1200) + "..." : data.text;
+                        // Added optional chaining ?.
+                        await message.channel?.sendMessage(`**${ref}** (${ver.toUpperCase()})\n${text}`);
+                    }
+                }
+            }
+            if (processedMatch) return; 
+        }
 
-            const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
-            
-            if (data?.text) {
-                const ref = data.reference || reference;
-                const text = data.text.length > 1000 ? data.text.substring(0, 1000) + "..." : data.text;
-                await message.channel.sendMessage(`**${ref}** (${version.toUpperCase()})\n${text}`);
+        // --- STEP C: PREFIX COMMANDS ---
+        if (!message.content.startsWith(PREFIX)) return;
+        const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+        const commandName = args.shift().toLowerCase();
+
+        if (commandName === "ping") return message.channel?.sendMessage("Pong! BibleBot is active.");
+
+        if (commandName === "pingbot") {
+            return message.channel?.sendMessage(`Shield: ${MOD_ENABLED ? "Active" : "Off"} | Default: ${userDefault.toUpperCase()}`);
+        }
+
+        if (commandName === "help") {
+            return message.channel.sendMessage("# BibleBot Help\n> `!random` - random verse.  | `!pingbot` - check status & default version.  | `!setversion [name]` - set default version.  | `!versions` - list available versions.");
+        }
+        if (commandName === "setversion") {
+            const newVer = args[0]?.toLowerCase();
+            if (SUPPORTED_VERSIONS.includes(newVer)) {
+                userPrefs[message.author.id] = newVer;
+                savePrefs();
+                return message.channel?.sendMessage(`<@${message.author.id}>, default set to **${newVer.toUpperCase()}**.`);
+            }
+            return message.channel?.sendMessage("Invalid version.");
+        }
+
+        if (commandName === "random") {
+            const data = await fetchJSON(`https://bible-api.com/data/${userDefault}/random`);
+            if (data?.random_verse) {
+                const v = data.random_verse;
+                return message.channel?.sendMessage(`**${v.book_name} ${v.chapter}:${v.verse}** (${userDefault.toUpperCase()})\n${v.text}`);
             }
         }
-        return; // Exit so it doesn't try to process standard commands
-    }
-
-    if (!message.content.startsWith(PREFIX)) return;
-
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
-
-    if (commandName === "ping") return message.channel.sendMessage("Pong! BibleBot is active.");
-    
-    if (commandName === "help") {
-        return message.channel.sendMessage("# BibleBot Help\n> `!random - random verse. ` | `pingmod - check status & default version. ` | `!version [name] - set default version`| `!versions - display available versions`");
-    }
-
-    if (commandName === "version") {
-        const newVer = args[0]?.toLowerCase();
-        if (SUPPORTED_VERSIONS.includes(newVer)) {
-            currentVersion = newVer;
-            return message.channel.sendMessage(`Default set to **${newVer.toUpperCase()}**.`);
-        }
-        return message.channel.sendMessage("Invalid version.");
-    }
-
-    if (commandName === "versions") {
-        const list = SUPPORTED_VERSIONS.map(v => v.toUpperCase()).join(", ");
-        return message.channel.sendMessage(`**Available Versions:**\n${list}`);
-    }
-
-if (commandName === "random") {
-        const data = await fetchJSON(`https://bible-api.com/data/${currentVersion}/random`);
-        if (data?.random_verse) {
-            const v = data.random_verse;
-            // Use v.book_name OR v.book (fallback) to prevent "undefined"
-            const book = v.book_name || v.book || "Reference"; 
-            return message.channel.sendMessage(`**${book} ${v.chapter}:${v.verse}** (${currentVersion.toUpperCase()})\n${v.text}`);
-        }
-    }
-
-    // Verse Parser (Matches: !John 3:16 or !John 3:16?kjv)
-    //const bibleRegex = /^([1-3]?\s?[a-zA-Z]+)\s?(\d+):(\d+)/i;
-    if (bibleRegex.test(commandName + " " + args.join(" "))) {
-        let reference = message.content.slice(1);
-        let version = currentVersion;
-
-        if (reference.includes("?")) {
-            const parts = reference.split("?");
-            reference = parts[0];
-            if (SUPPORTED_VERSIONS.includes(parts[1])) version = parts[1];
+        
+        if (commandName === "versions") {
+            return message.channel?.sendMessage(`**Default:** ${userDefault.toUpperCase()} | **Versions:** ${SUPPORTED_VERSIONS.map(v => v.toUpperCase()).join(", ")}`);
         }
 
-        const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(reference)}?translation=${version}`);
-        if (data?.text) {
-            // Ensure data.reference exists, otherwise fall back to the reference variable
-            const ref = data.reference || reference; 
-            const text = data.text.length > 1500 ? data.text.substring(0, 1500) + "..." : data.text;
-            return message.channel.sendMessage(`**${ref}** (${version.toUpperCase()})\n${text}`);
-        }
+    } catch (error) {
+        console.error("Message Processing Error:", error);
     }
 });
 
-// Helper
 async function fetchJSON(url) {
     try {
         const res = await fetch(url);
