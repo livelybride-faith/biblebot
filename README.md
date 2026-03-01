@@ -18,7 +18,7 @@ BibleBot for Stoat Chat
 ### Credits : all the parsing uses bible-api.com unless stated otherwise. 
 
 ## [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/livelybride-faith/MenuBarSpacingController/blob/main/LICENSE.txt) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/livelybride-faith/biblebot/edit/main/README.md#:~:text=LICENSE-,README,-.md)file for details.
 
 ## Buy me a coffee 
 [![PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/paypalme/MichelleYeow)
