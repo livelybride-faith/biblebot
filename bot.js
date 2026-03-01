@@ -177,6 +177,16 @@ client.on("messageCreate", async (message) => {
             }
         }
         
+        if (commandName === "daily") {
+            const data = await fetchJSON("https://beta.ourmanna.com/api/v1/get?format=json&order=daily");
+            if (data?.verse?.details) {
+                const v = data.verse.details;
+                return message.channel?.sendMessage(`**Daily Manna**\n\n"${v.text.trim()}"\n— *${v.reference} (${v.version})*`);
+            } else {
+                return message.channel?.sendMessage("Could not fetch the daily verse right now.");
+            }
+        }
+
         if (commandName === "versions") {
             return message.channel?.sendMessage(`**Default:** ${userDefault.toUpperCase()} | **Versions:** ${SUPPORTED_VERSIONS.map(v => v.toUpperCase()).join(", ")}`);
         }
