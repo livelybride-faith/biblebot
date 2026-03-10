@@ -1,6 +1,6 @@
 # biblebot
 BibleBot for Stoat Chat
-## Join [Faith Christian Server](https://stt.gg/3vTTwtM8) in Stoat Chat
+## Join [Faith Christian Community Server](https://stt.gg/3vTTwtM8) in Stoat Chat
 
 ## Features : 
 1. !random - random verse generator.
