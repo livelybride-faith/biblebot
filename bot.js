@@ -116,7 +116,7 @@ client.on("messageCreate", async (message) => {
         }
 
         // --- STEP B: BIBLE PARSER ---
-        const bibleRegex = /([1-3]?\s?[a-zA-Z]+)\s*(\d+):(\d+)(?:-(\d+))?(?:[\s?]([a-zA-Z- ,]+))?/gi;
+        const bibleRegex = /([1-3]?\s?[a-zA-Z]+)\s*(\d+):(\d+)(?:[–—-](\d+))?(?:[\s?]([a-zA-Z- ,]+))?/gi;
         const matches = [...message.content.matchAll(bibleRegex)];
 
         if (matches.length > 0) {
