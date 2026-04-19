@@ -16,6 +16,7 @@ const __dirname = path.dirname(__filename);
 const MOD_ENABLED = process.env.MOD_ENABLED?.toLowerCase() === "true";
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const PREFIX = "!";
+const ALLOWED_BOT = process.env.ALLOWED_BOT;
 let globalDefaultVersion = "kjv"; 
 
 const SUPPORTED_VERSIONS = [
@@ -99,7 +100,14 @@ client.on("ready", () => {
 
 client.on("messageCreate", async (message) => {
     // CRITICAL: Defensive check to ensure message and channel exist
-    if (!message || !message.content || message.author?.bot || !message.channel) return;
+    if (!message || !message.content || !message.channel) return;
+
+    // 2. Updated Bot Filter: 
+    // Ignore the message if the author is a bot, 
+    // UNLESS the author's ID matches our ALLOWED_BOT. Added BotsWatcher to automate restart if no response returned.
+    if (message.author?.bot) {
+        if (message.author.id !== ALLOWED_BOT) return;
+    }
 
     try {
         const userDefault = userPrefs[message.author.id] || globalDefaultVersion;
@@ -116,6 +124,7 @@ client.on("messageCreate", async (message) => {
         }
 
         // --- STEP B: BIBLE PARSER ---
+        //const bibleRegex = /([1-3]?\s?[a-zA-Z]+)\s*(\d+):(\d+)(?:-(\d+))?(?:[\s?]([a-zA-Z- ,]+))?/gi;
         const bibleRegex = /([1-3]?\s?[a-zA-Z]+)\s*(\d+):(\d+)(?:[–—-](\d+))?(?:[\s?]([a-zA-Z- ,]+))?/gi;
         const matches = [...message.content.matchAll(bibleRegex)];
 
