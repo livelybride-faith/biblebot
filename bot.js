@@ -182,7 +182,7 @@ client.on("messageCreate", async (message) => {
             const data = await fetchJSON(`https://bible-api.com/data/${userDefault}/random`);
             if (data?.random_verse) {
                 const v = data.random_verse;
-                return message.channel?.sendMessage(`**${v.book_name} ${v.chapter}:${v.verse}** (${userDefault.toUpperCase()})\n${v.text}`);
+                return message.channel?.sendMessage(`**${v.book} ${v.chapter}:${v.verse}** (${userDefault.toUpperCase()})\n${v.text.trim()}`);
             }
         }
         
