@@ -185,7 +185,7 @@ client.on("messageCreate", async (message) => {
                 return message.channel?.sendMessage(`**${v.book} ${v.chapter}:${v.verse}** (${userDefault.toUpperCase()})\n${v.text.trim()}`);
             }
         }
-        
+        /* Originally return NIV version
         if (commandName === "daily") {
             const data = await fetchJSON("https://beta.ourmanna.com/api/v1/get?format=json&order=daily");
             if (data?.verse?.details) {
@@ -194,6 +194,23 @@ client.on("messageCreate", async (message) => {
             } else {
                 return message.channel?.sendMessage("Could not fetch the daily verse right now.");
             }
+        }*/
+
+        if (commandName === "daily") {
+            const daily = await fetchJSON("https://beta.ourmanna.com/api/v1/get?format=json&order=daily");
+            if (!daily?.verse?.details) {
+                return message.channel?.sendMessage("Could not fetch the daily verse right now.");
+            }
+            const ref = daily.verse.details.reference;
+
+            // Re-fetch that same reference in the user's preferred version
+            const data = await fetchJSON(`https://bible-api.com/${encodeURIComponent(ref)}?translation=${userDefault}`);
+            if (data?.text) {
+                return message.channel?.sendMessage(`**Daily Manna: ${data.reference || ref}** (${userDefault.toUpperCase()})\n${data.text.trim()}`);
+            }
+            // fallback to OurManna's own text if bible-api can't parse the reference
+            const v = daily.verse.details;
+            return message.channel?.sendMessage(`**Daily Manna**\n\n"${v.text.trim()}"\n— *${v.reference} (${v.version})*`);
         }
 
         if (commandName === "versions") {
